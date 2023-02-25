@@ -1,0 +1,77 @@
+name: Deploy AKS using Terraform
+on: [push]
+
+jobs:
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan -out main.tfplan
+        env:
+          TF_VAR_storekey: ${{ secrets.STORE_KEY }}
+
+      - name: Terraform Apply
+        run: terraform apply "main.tfplan" -auto-approve
+        env:
+          TF_VAR_storekey: ${{ secrets.STORE_KEY }}
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: ACR build
+        id: build-push-acr
+        uses: azure/acr-build@v1
+        with:
+          service_principal: ${{ secrets.ARM_CLIENT_ID }}
+          service_principal_password: ${{ secrets.ARM_CLIENT_SECRET }}
+          tenant: ${{ secrets.ARM_TENANT_ID }}
+          registry: tfacr0719
+          repository: userapi
+          image: userapi
+          folder: UserApi
+          tag: latest
+
+      - name: Azure login
+        id: login
+        uses: azure/login@v1.4.3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        id: set-context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: "acr-aks-rg"
+          cluster-name: "terraform-aks"
+
+      - name: Setup kubectl
+        id: install-kubectl
+        uses: azure/setup-kubectl@v3
+      - name: Deploy to AKS
+        id: deploy-aks
+        uses: Azure/k8s-deploy@v4
+        with:
+          namespace: "default"
+          manifests: |
+            manifests/userapi-deployment.yaml
+          images: |
+            tfacr0719.azurecr.io/userapi/userapi:latest
+          pull-images: false
