@@ -22,13 +22,9 @@ jobs:
 
       - name: Terraform Plan
         run: terraform plan -out main.tfplan
-        env:
-          TF_VAR_storekey: ${{ secrets.STORE_KEY }}
 
       - name: Terraform Apply
         run: terraform apply "main.tfplan" -auto-approve
-        env:
-          TF_VAR_storekey: ${{ secrets.STORE_KEY }}
 
   build:
     runs-on: ubuntu-latest
